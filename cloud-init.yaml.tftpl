@@ -1,0 +1,133 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+timezone: ${timezone}
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+
+write_files:
+  - path: /opt/adguard/docker-compose.yml
+    permissions: "0644"
+    content: |
+      services:
+        adguardhome:
+          image: adguard/adguardhome:latest
+          container_name: adguardhome
+          restart: unless-stopped
+          volumes:
+            - /opt/adguard/work:/opt/adguardhome/work
+            - /opt/adguard/conf:/opt/adguardhome/conf
+          ports:
+            - "3000:3000/tcp"
+            - "80:80/tcp"
+            - "443:443/tcp"
+            - "853:853/tcp"
+
+  - path: /usr/local/sbin/install-docker-ce.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      . /etc/os-release
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - path: /usr/local/sbin/configure-adguard-trusted-proxies.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      config=/opt/adguard/conf/AdGuardHome.yaml
+      for _ in {1..30}; do
+        [[ -f "$config" ]] && break
+        sleep 1
+      done
+      [[ -f "$config" ]] || exit 1
+
+      if ! grep -q '^trusted_proxies:' "$config"; then
+        cat >> "$config" <<'EOF'
+      trusted_proxies:
+        - 173.245.48.0/20
+        - 103.21.244.0/22
+        - 103.22.200.0/22
+        - 103.31.4.0/22
+        - 141.101.64.0/18
+        - 108.162.192.0/18
+        - 190.93.240.0/20
+        - 188.114.96.0/20
+        - 197.234.240.0/22
+        - 198.41.128.0/17
+        - 162.158.0.0/15
+        - 104.16.0.0/13
+        - 104.24.0.0/14
+        - 172.64.0.0/13
+        - 131.0.72.0/22
+        - 2400:cb00::/32
+        - 2606:4700::/32
+        - 2803:f800::/32
+        - 2405:b500::/32
+        - 2405:8100::/32
+        - 2a06:98c0::/29
+        - 2c0f:f248::/32
+      EOF
+        /usr/bin/docker restart adguardhome
+      fi
+  - path: /etc/systemd/system/adguard-update.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Update AdGuard Home container
+      Requires=docker.service
+      After=docker.service network-online.target
+
+      [Service]
+      Type=oneshot
+      WorkingDirectory=/opt/adguard
+      ExecStart=/usr/bin/docker compose pull adguardhome
+      ExecStart=/usr/bin/docker compose up -d --no-deps adguardhome
+      ExecStartPost=/usr/bin/docker image prune --force
+  - path: /etc/systemd/system/adguard-update.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Schedule AdGuard Home updates
+
+      [Timer]
+      OnCalendar=${adguard_update_calendar}
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/systemd/system/adguard-compose.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=AdGuard Home Docker Compose stack
+      Requires=docker.service
+      After=docker.service network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/opt/adguard
+      ExecStart=/usr/bin/docker compose up -d
+      ExecStop=/usr/bin/docker compose down
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - mkdir -p /opt/adguard/work /opt/adguard/conf
+  - /usr/local/sbin/install-docker-ce.sh
+  - systemctl enable --now docker
+  - systemctl daemon-reload
+  - systemctl enable --now adguard-compose.service
+  - /usr/local/sbin/configure-adguard-trusted-proxies.sh
+  - systemctl enable --now adguard-update.timer
