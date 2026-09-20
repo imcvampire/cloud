@@ -3,12 +3,37 @@ package_update: true
 package_upgrade: true
 timezone: ${timezone}
 
+# Created by the mounts module, which runs before packages are upgraded and
+# before runcmd installs Docker. Without swap, a 1 GB host livelocks when an
+# apt run and a container image pull overlap: the kernel keeps answering TCP
+# while no userspace process can be scheduled, so the box accepts SSH
+# connections but never returns a banner.
+swap:
+  filename: /swapfile
+  size: ${swap_size_bytes}
+  maxsize: ${swap_size_bytes}
+
 packages:
   - ca-certificates
+  - python3-yaml
   - curl
   - gnupg
 
 write_files:
+  - path: /etc/sysctl.d/99-adguard-memory.conf
+    permissions: "0644"
+    content: |
+      vm.swappiness = 60
+      vm.vfs_cache_pressure = 50
+
+  # Keep sshd out of the OOM killer's reach. Recovering a wedged host over SSH
+  # is the difference between a one-minute fix and a serial-console session.
+  - path: /etc/systemd/system/ssh.service.d/oom.conf
+    permissions: "0644"
+    content: |
+      [Service]
+      OOMScoreAdjust=-900
+
   - path: /opt/adguard/docker-compose.yml
     permissions: "0644"
     content: |
@@ -17,6 +42,13 @@ write_files:
           image: adguard/adguardhome:latest
           container_name: adguardhome
           restart: unless-stopped
+          mem_limit: ${adguard_memory_limit}
+          memswap_limit: 1g
+          logging:
+            driver: json-file
+            options:
+              max-size: "10m"
+              max-file: "3"
           volumes:
             - /opt/adguard/work:/opt/adguardhome/work
             - /opt/adguard/conf:/opt/adguardhome/conf
@@ -44,41 +76,59 @@ write_files:
       #!/usr/bin/env bash
       set -euo pipefail
 
+      # Ranges are injected from Cloudflare's published list at plan time, so
+      # this file and the OCI security list cannot drift apart.
+      ranges="${cloudflare_ranges}"
       config=/opt/adguard/conf/AdGuardHome.yaml
-      for _ in {1..30}; do
-        [[ -f "$config" ]] && break
-        sleep 1
-      done
-      [[ -f "$config" ]] || exit 1
 
-      if ! grep -q '^trusted_proxies:' "$config"; then
-        cat >> "$config" <<'EOF'
-      trusted_proxies:
-        - 173.245.48.0/20
-        - 103.21.244.0/22
-        - 103.22.200.0/22
-        - 103.31.4.0/22
-        - 141.101.64.0/18
-        - 108.162.192.0/18
-        - 190.93.240.0/20
-        - 188.114.96.0/20
-        - 197.234.240.0/22
-        - 198.41.128.0/17
-        - 162.158.0.0/15
-        - 104.16.0.0/13
-        - 104.24.0.0/14
-        - 172.64.0.0/13
-        - 131.0.72.0/22
-        - 2400:cb00::/32
-        - 2606:4700::/32
-        - 2803:f800::/32
-        - 2405:b500::/32
-        - 2405:8100::/32
-        - 2a06:98c0::/29
-        - 2c0f:f248::/32
-      EOF
+      # AdGuard Home writes this file only once the first-run wizard is
+      # completed, which is long after cloud-init exits. Leave quietly and let
+      # the timer call again rather than giving up.
+      [[ -f "$config" ]] || exit 0
+
+      # The setting is dns.trusted_proxies. A top-level key parses but is
+      # ignored, which fails silently and logs the proxy as the client.
+      if python3 - "$config" $ranges <<'PY'
+      import sys, yaml
+      path, ranges = sys.argv[1], sys.argv[2:]
+      cfg = yaml.safe_load(open(path)) or {}
+      cfg.pop("trusted_proxies", None)
+      dns = cfg.setdefault("dns", {})
+      if dns.get("trusted_proxies") == ranges:
+          sys.exit(10)
+      dns["trusted_proxies"] = ranges
+      yaml.safe_dump(cfg, open(path, "w"), default_flow_style=False, sort_keys=False)
+      PY
+      then
         /usr/bin/docker restart adguardhome
+      else
+        rc=$?
+        [[ $rc -eq 10 ]] || exit $rc
       fi
+
+      systemctl disable --now adguard-trusted-proxies.timer
+  - path: /etc/systemd/system/adguard-trusted-proxies.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Apply Cloudflare trusted proxies to AdGuard Home
+      After=adguard-compose.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/configure-adguard-trusted-proxies.sh
+  - path: /etc/systemd/system/adguard-trusted-proxies.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Retry trusted-proxy configuration until the setup wizard is done
+
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=5min
+
+      [Install]
+      WantedBy=timers.target
   - path: /etc/systemd/system/adguard-update.service
     permissions: "0644"
     content: |
@@ -101,7 +151,13 @@ write_files:
 
       [Timer]
       OnCalendar=${adguard_update_calendar}
-      Persistent=true
+      # Persistent=true fires a missed run the instant the host boots, stacking
+      # an image pull on top of first-boot apt activity. On a 1 GB host that
+      # combination is what exhausts memory, so a missed window is skipped
+      # rather than replayed, and the run is spread to avoid colliding with
+      # other scheduled work.
+      Persistent=false
+      RandomizedDelaySec=1h
 
       [Install]
       WantedBy=timers.target
@@ -124,10 +180,12 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
+  - sysctl --system
   - mkdir -p /opt/adguard/work /opt/adguard/conf
   - /usr/local/sbin/install-docker-ce.sh
   - systemctl enable --now docker
   - systemctl daemon-reload
+  - systemctl restart ssh
   - systemctl enable --now adguard-compose.service
-  - /usr/local/sbin/configure-adguard-trusted-proxies.sh
+  - systemctl enable --now adguard-trusted-proxies.timer
   - systemctl enable --now adguard-update.timer

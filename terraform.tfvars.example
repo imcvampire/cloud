@@ -9,9 +9,22 @@ ssh_public_key   = "ssh-ed25519 AAAA... you@example"
 # Used only by the one-time `bootstrap/` state-bucket deployment.
 state_bucket_name = "tofu-state"
 
-# SSH and the dashboard have independent access controls.
+# SSH and the dashboard bypass Cloudflare and hit the origin directly.
 admin_cidrs     = ["203.0.113.10/32"]
 dashboard_cidrs = ["203.0.113.10/32"]
 
-# Public resolvers can be abused. Restrict this when the resolver is private.
-# dns_cidrs = ["203.0.113.0/24"]
+# The Cloudflare-proxied hostname clients use for DoH. TCP 80 and 443 accept
+# Cloudflare edge ranges only, fetched from Cloudflare at plan time, so the
+# origin IP is not usable for DoH and is not an open resolver.
+dns_hostname = "dns.example.com"
+
+# Cloudflare's proxy cannot carry TCP 853, so DoT bypasses it entirely.
+# Empty keeps 853 closed. Setting it exposes the origin directly to these
+# CIDRs, which only works for clients at a known, stable address.
+dot_cidrs = []
+
+# Uncomment for VM.Standard.A1.Flex (arm64). Fixed shapes such as
+# VM.Standard.E2.1.Micro must leave both null.
+# instance_shape      = "VM.Standard.A1.Flex"
+# instance_ocpus      = 2
+# instance_memory_gbs = 12
