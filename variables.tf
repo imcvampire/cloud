@@ -75,6 +75,36 @@ variable "instance_memory_gbs" {
   default     = null
 }
 
+variable "create_arm64" {
+  description = "Whether to create arm64-1, its subnet, and its security list. Off by default, so the AdGuard host deploys alone and the Always Free A1 allowance stays unused. Flipping this back to false after an apply destroys the host and its boot volume."
+  type        = bool
+  default     = false
+}
+
+variable "arm64_instance_shape" {
+  description = "Always Free arm64 shape. VM.Standard.A1.Flex is the only one, and being flexible it requires arm64_instance_ocpus and arm64_instance_memory_gbs."
+  type        = string
+  default     = "VM.Standard.A1.Flex"
+}
+
+variable "arm64_instance_ocpus" {
+  description = "OCPUs for arm64-1. The Always Free A1 allowance is shared across every A1 instance in the tenancy, so raising this requires the allowance to be unused elsewhere."
+  type        = number
+  default     = 1
+}
+
+variable "arm64_instance_memory_gbs" {
+  description = "Memory for arm64-1, in GB. A1.Flex accepts 1 to 6 GB per OCPU; the Always Free allowance is 6 GB per OCPU."
+  type        = number
+  default     = 6
+}
+
+variable "arm64_availability_domain" {
+  description = "Optional availability domain for arm64-1. Free A1 capacity is often exhausted in one domain while available in another, so it is chosen separately from the AdGuard host. Null follows availability_domain."
+  type        = string
+  default     = null
+}
+
 variable "swap_size_gb" {
   description = "Swap file size. Absorbs the allocation burst from apt and container image pulls, which is what exhausts a 1 GB host."
   type        = number

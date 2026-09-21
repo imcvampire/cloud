@@ -22,3 +22,13 @@ output "cloudflare_ranges_applied" {
   description = "Count of Cloudflare edge ranges in the security list at last apply. A change here means the upstream list moved."
   value       = "${length(local.cloudflare_ipv4)} IPv4 ingress ranges, ${length(local.cloudflare_ipv6)} IPv6 ranges in trusted_proxies"
 }
+
+output "arm64_public_ip" {
+  description = "Public address of arm64-1, or null when create_arm64 is false."
+  value       = one(oci_core_instance.arm64[*].public_ip)
+}
+
+output "arm64_ssh" {
+  description = "SSH command for arm64-1. Reachable only from admin_cidrs."
+  value       = var.create_arm64 ? "ssh ubuntu@${one(oci_core_instance.arm64[*].public_ip)}" : "Not created. Set create_arm64 = true to build it."
+}

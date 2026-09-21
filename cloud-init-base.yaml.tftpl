@@ -1,0 +1,40 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+timezone: ${timezone}
+
+# Created by the mounts module, before packages are upgraded and before runcmd
+# installs Docker, so the allocation burst from apt and image pulls has
+# somewhere to go regardless of how the host is later sized down.
+swap:
+  filename: /swapfile
+  size: ${swap_size_bytes}
+  maxsize: ${swap_size_bytes}
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+
+write_files:
+  # Keep sshd out of the OOM killer's reach. Recovering a wedged host over SSH
+  # is the difference between a one-minute fix and a serial-console session.
+  - path: /etc/systemd/system/ssh.service.d/oom.conf
+    permissions: "0644"
+    content: |
+      [Service]
+      OOMScoreAdjust=-900
+
+  # Shared verbatim with cloud-init.yaml.tftpl. The script reads the
+  # architecture from dpkg, so one copy serves both amd64 and arm64 hosts.
+  - path: /usr/local/sbin/install-docker-ce.sh
+    permissions: "0755"
+    content: |
+      ${indent(6, docker_install_script)}
+
+runcmd:
+  - /usr/local/sbin/install-docker-ce.sh
+  - systemctl enable --now docker
+  - usermod -aG docker ubuntu
+  - systemctl daemon-reload
+  - systemctl restart ssh

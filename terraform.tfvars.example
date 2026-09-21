@@ -23,8 +23,20 @@ dns_hostname = "dns.example.com"
 # CIDRs, which only works for clients at a known, stable address.
 dot_cidrs = []
 
-# Uncomment for VM.Standard.A1.Flex (arm64). Fixed shapes such as
-# VM.Standard.E2.1.Micro must leave both null.
+# Shape of the AdGuard host, amd64-1. Uncomment for VM.Standard.A1.Flex
+# (arm64). Fixed shapes such as VM.Standard.E2.1.Micro must leave both null.
 # instance_shape      = "VM.Standard.A1.Flex"
 # instance_ocpus      = 2
 # instance_memory_gbs = 12
+
+# arm64-1 is opt-in. Uncomment to build it; flipping it back off after an
+# apply destroys that host and its boot volume.
+# create_arm64 = true
+
+# The arm64 host, arm64-1, is VM.Standard.A1.Flex at 1 OCPU and 6 GB, half the
+# Always Free A1 allowance, so a second A1 instance still fits. Free A1
+# capacity is often unavailable in one domain and available in another, so
+# this host chooses its own.
+# arm64_instance_ocpus      = 1
+# arm64_instance_memory_gbs = 6
+# arm64_availability_domain = "dkDS:EU-FRANKFURT-1-AD-3"
