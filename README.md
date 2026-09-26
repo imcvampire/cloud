@@ -114,7 +114,7 @@ Open the `setup_dashboard` output and complete AdGuard Home's first-run wizard. 
 
 For real headroom, `VM.Standard.A1.Flex` is also Always Free at 2 OCPU and 12 GB (halved from 4/24 on 15 June 2026). It is arm64, and the AdGuard image is multi-arch, so moving AdGuard there changes only `instance_shape`, `instance_ocpus`, and `instance_memory_gbs`. If `create_arm64` is on, `arm64-1` already holds half the A1 allowance, so either shrink `arm64_instance_ocpus` and `arm64_instance_memory_gbs` further or turn it off before sizing AdGuard onto A1.
 
-The host-managed `adguard-update.timer` checks daily at 04:00 UTC by default, spread by up to an hour, pulls and restarts only AdGuard Home, and removes unused images. Change `adguard_update_calendar` with a systemd `OnCalendar` expression to choose another schedule. Since updates are automatic, use a pinned AdGuard image tag instead of `latest` if you prefer a deliberate upgrade cadence.
+The host-managed `adguard-update.timer` checks daily at 04:00 Europe/Helsinki by default, spread by up to an hour, pulls and restarts only AdGuard Home, and removes unused images. The zone is part of the `OnCalendar` expression rather than the host clock, so the window tracks DST while the host itself stays on `var.timezone`. Change `adguard_update_calendar` with a systemd `OnCalendar` expression to choose another schedule. Since updates are automatic, use a pinned AdGuard image tag instead of `latest` if you prefer a deliberate upgrade cadence.
 
 ### The arm64 host
 

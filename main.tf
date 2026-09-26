@@ -229,8 +229,17 @@ resource "oci_core_instance" "adguard" {
 
   # OCI replaces an instance when its launch-time user_data changes. Keep
   # cloud-init fixes non-destructive for an already-running DNS server.
+  #
+  # source_id resolves to whatever Canonical published most recently. Left
+  # unpinned it makes every plan propose an UpdateInstance that reimages the
+  # boot volume in place, which is a wipe, not an upgrade. Image selection
+  # therefore governs launches only; moving a live host to a newer image is a
+  # deliberate `tofu apply -replace`, taken with its data handled first.
   lifecycle {
-    ignore_changes = [metadata["user_data"]]
+    ignore_changes = [
+      metadata["user_data"],
+      source_details[0].source_id,
+    ]
   }
 }
 
@@ -324,7 +333,16 @@ resource "oci_core_instance" "arm64" {
 
   # OCI replaces an instance when its launch-time user_data changes. Keep
   # cloud-init fixes non-destructive for a host that is already carrying work.
+  #
+  # source_id resolves to whatever Canonical published most recently. Left
+  # unpinned it makes every plan propose an UpdateInstance that reimages the
+  # boot volume in place, which is a wipe, not an upgrade. Image selection
+  # therefore governs launches only; moving a live host to a newer image is a
+  # deliberate `tofu apply -replace`, taken with its data handled first.
   lifecycle {
-    ignore_changes = [metadata["user_data"]]
+    ignore_changes = [
+      metadata["user_data"],
+      source_details[0].source_id,
+    ]
   }
 }

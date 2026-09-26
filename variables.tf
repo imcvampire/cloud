@@ -130,9 +130,9 @@ variable "timezone" {
 }
 
 variable "adguard_update_calendar" {
-  description = "systemd OnCalendar expression for AdGuard Home updates. Defaults to 04:00 daily."
+  description = "systemd OnCalendar expression for AdGuard Home updates. A trailing IANA zone pins the schedule to local wall-clock time and follows DST, independently of the host clock set by var.timezone."
   type        = string
-  default     = "*-*-* 04:00:00"
+  default     = "*-*-* 04:00:00 Europe/Helsinki"
 }
 
 variable "state_bucket_name" {
