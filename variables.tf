@@ -111,12 +111,6 @@ variable "swap_size_gb" {
   default     = 2
 }
 
-variable "adguard_memory_limit" {
-  description = "Hard memory ceiling for the AdGuard container, so it cannot take the host down with it."
-  type        = string
-  default     = "512m"
-}
-
 variable "ubuntu_version" {
   description = "Canonical Ubuntu image version to use."
   type        = string

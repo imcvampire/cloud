@@ -221,7 +221,6 @@ resource "oci_core_instance" "adguard" {
       timezone                = var.timezone
       adguard_update_calendar = var.adguard_update_calendar
       swap_size_bytes         = var.swap_size_gb * 1024 * 1024 * 1024
-      adguard_memory_limit    = var.adguard_memory_limit
       cloudflare_ranges       = local.cloudflare_trusted_proxies
       docker_install_script   = local.docker_install_script
     }))

@@ -107,7 +107,7 @@ Open the `setup_dashboard` output and complete AdGuard Home's first-run wizard. 
 
 - A `swap_size_gb` swap file, created by cloud-init's mounts module before packages are upgraded and before Docker is installed, absorbs the allocation burst.
 - `adguard-update.timer` sets `Persistent=false` and `RandomizedDelaySec=1h`. With `Persistent=true` a missed nightly run fires the instant the host boots, stacking an image pull on top of first-boot apt activity, which turns every reboot into the same failure.
-- The container has a hard `adguard_memory_limit` and rotated logs, so it cannot exhaust the host or the disk.
+- The container has rotated logs, so it cannot exhaust the disk. It carries no memory ceiling: the rule engine's working set exceeds what a hard limit could grant it, and capping the cgroup only converted the shortfall into a restart loop, so the swap file absorbs the refresh peak instead. This trades a fast container restart for the risk of host-wide memory pressure, which is what the `OOMScoreAdjust` below exists to survive.
 - `sshd` runs with `OOMScoreAdjust=-900`, so it survives memory pressure and the host stays recoverable over SSH instead of needing a serial console.
 
 `ignore_changes` on `user_data` means edits here reach a **new** instance only. Apply them to a running host over SSH, or rebuild deliberately.
